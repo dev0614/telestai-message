@@ -1,0 +1,36 @@
+{
+  "name": "telestaijs-message",
+  "version": "1.0.0",
+  "description": "Sign and Verify messages in Telestai",
+  "keywords": [
+    "telestaijs-message",
+    "telestai"
+  ],
+  "source": "index.ts",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dev0614/telestai-message.git"
+  },
+  "module": "dist/module.js",
+  "directories": {
+    "test": "npm run standard && npm run unit"
+  },
+  "scripts": {
+    "test": "test"
+  },
+  "author": "Takehiko",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "dependencies": {
+    "bech32": "^2.0.0",
+    "bs58check": "^4.0.0",
+    "create-hash": "^1.2.0",
+    "secp256k1": "^5.0.0",
+    "varuint-bitcoin": "^2.0.0"
+  }
+}
