@@ -1,17 +1,17 @@
-const bs58check = require("bs58check");
-const bech32 = require("bech32");
-const bufferEquals = require("buffer-equals");
-const createHash = require("create-hash");
-const secp256k1 = require("secp256k1");
-const varuint = require("varuint-bitcoin");
+import * as bech32 from 'bech32';
+import bs58check from 'bs58check';
+import bufferEquals from 'buffer-equals';
+import createHash from 'create-hash';
+import * as secp256k1 from 'secp256k1';
+import * as varuint from 'varuint-bitcoin';
 
 const SEGWIT_TYPES = {
-  P2WPKH: "p2wpkh",
-  P2SH_P2WPKH: "p2sh(p2wpkh)",
+  P2WPKH: 'p2wpkh',
+  P2SH_P2WPKH: 'p2sh(p2wpkh)',
 };
 
 function sha256(buffer) {
-  return createHash("sha256").update(buffer).digest();
+  return createHash('sha256').update(buffer).digest();
 }
 
 function hash256(buffer) {
@@ -19,7 +19,7 @@ function hash256(buffer) {
 }
 
 function hash160(buffer) {
-  return createHash("ripemd160").update(sha256(buffer)).digest();
+  return createHash('ripemd160').update(sha256(buffer)).digest();
 }
 
 function encodeSignature(signature, recovery, compressed, segwitType) {
@@ -33,11 +33,11 @@ function encodeSignature(signature, recovery, compressed, segwitType) {
 }
 
 function decodeSignature(buffer) {
-  if (buffer.length !== 65) throw new Error("Invalid signature length");
+  if (buffer.length !== 65) throw new Error('Invalid signature length');
 
   const flagByte = buffer.readUInt8(0) - 27;
   if (flagByte > 15 || flagByte < 0) {
-    throw new Error("Invalid signature parameter");
+    throw new Error('Invalid signature parameter');
   }
 
   return {
@@ -52,15 +52,12 @@ function decodeSignature(buffer) {
   };
 }
 
-function magicHash(
-  message,
-  messagePrefix = "\u0018Telestai Signed Message:\n"
-) {
+function magicHash(message, messagePrefix = '\u0018Telestai Signed Message:\n') {
   if (!Buffer.isBuffer(messagePrefix)) {
-    messagePrefix = Buffer.from(messagePrefix, "utf8");
+    messagePrefix = Buffer.from(messagePrefix, 'utf8');
   }
   if (!Buffer.isBuffer(message)) {
-    message = Buffer.from(message, "utf8");
+    message = Buffer.from(message, 'utf8');
   }
 
   const messageVISize = varuint.encodingLength(message.length);
@@ -77,7 +74,7 @@ function magicHash(
 
 function prepareSign(messagePrefixArg, sigOptions = {}) {
   let { segwitType, extraEntropy } = sigOptions;
-  if (typeof segwitType === "string" || segwitType instanceof String) {
+  if (typeof segwitType === 'string' || segwitType instanceof String) {
     segwitType = segwitType.toLowerCase();
   }
 
@@ -102,42 +99,19 @@ function prepareSign(messagePrefixArg, sigOptions = {}) {
   };
 }
 
-function isSigner(obj) {
-  return obj && typeof obj.sign === "function";
-}
-
-function sign(
-  message,
-  privateKey,
-  compressed = true,
-  messagePrefix,
-  sigOptions
-) {
+function sign(message, privateKey, compressed = true, messagePrefix, sigOptions) {
   const { messagePrefixArg, segwitType, extraEntropy } = prepareSign(
     messagePrefix,
     sigOptions
   );
   const hash = magicHash(message, messagePrefixArg);
 
-  const sigObj = isSigner(privateKey)
-    ? privateKey.sign(hash, extraEntropy)
-    : secp256k1.sign(hash, privateKey, { data: extraEntropy });
+  const { signature, recovery } = secp256k1.ecdsaSign(hash, privateKey);
 
-  return encodeSignature(
-    sigObj.signature,
-    sigObj.recovery,
-    compressed,
-    segwitType
-  );
+  return encodeSignature(signature, recovery, compressed, segwitType);
 }
 
-function signAsync(
-  message,
-  privateKey,
-  compressed = true,
-  messagePrefix,
-  sigOptions
-) {
+function signAsync(message, privateKey, compressed = true, messagePrefix, sigOptions) {
   return Promise.resolve()
     .then(() => {
       const { messagePrefixArg, segwitType, extraEntropy } = prepareSign(
@@ -146,25 +120,15 @@ function signAsync(
       );
       const hash = magicHash(message, messagePrefixArg);
 
-      return isSigner(privateKey)
-        ? privateKey.sign(hash, extraEntropy)
-        : secp256k1.sign(hash, privateKey, { data: extraEntropy });
+      return secp256k1.ecdsaSign(hash, privateKey);
     })
-    .then((sigObj) => {
-      return encodeSignature(
-        sigObj.signature,
-        sigObj.recovery,
-        compressed,
-        sigOptions.segwitType
-      );
+    .then(({ signature, recovery }) => {
+      return encodeSignature(signature, recovery, compressed, sigOptions.segwitType);
     });
 }
 
 function segwitRedeemHash(publicKeyHash) {
-  const redeemScript = Buffer.concat([
-    Buffer.from("0014", "hex"),
-    publicKeyHash,
-  ]);
+  const redeemScript = Buffer.concat([Buffer.from('0014', 'hex'), publicKeyHash]);
   return hash160(redeemScript);
 }
 
@@ -175,15 +139,15 @@ function decodeBech32(address) {
 }
 
 function verify(message, address, signature, messagePrefix, checkSegwitAlways) {
-  if (!Buffer.isBuffer(signature)) signature = Buffer.from(signature, "base64");
+  if (!Buffer.isBuffer(signature)) signature = Buffer.from(signature, 'base64');
 
   const parsedSignature = decodeSignature(signature);
   const hash = magicHash(message, messagePrefix);
 
-  const publicKey = secp256k1.recover(
-    hash,
+  const publicKey = secp256k1.ecdsaRecover(
     parsedSignature.signature,
     parsedSignature.recovery,
+    hash,
     parsedSignature.compressed
   );
   const publicKeyHash = hash160(publicKey);
@@ -198,30 +162,13 @@ function verify(message, address, signature, messagePrefix, checkSegwitAlways) {
       expected = decodeBech32(address);
     }
   } else {
-    if (checkSegwitAlways) {
-      try {
-        expected = decodeBech32(address);
-        return bufferEquals(publicKeyHash, expected);
-      } catch (e) {
-        const redeemHash = segwitRedeemHash(publicKeyHash);
-        expected = bs58check.decode(address).slice(1);
-        return (
-          bufferEquals(publicKeyHash, expected) ||
-          bufferEquals(redeemHash, expected)
-        );
-      }
-    } else {
-      actual = publicKeyHash;
-      expected = bs58check.decode(address).slice(1);
-    }
+    actual = publicKeyHash;
+    expected = bs58check.decode(address).slice(1);
   }
 
   return bufferEquals(actual, expected);
 }
 
-module.exports = {
-  magicHash,
-  sign,
-  signAsync,
-  verify,
-};
+// Export the necessary functions
+export { magicHash, sign, signAsync, verify };
+
